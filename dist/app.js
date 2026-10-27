@@ -11,7 +11,7 @@ function syncStationSearch(){if(!feed)return;for(const id of ['from','to'])$(id+
 function setupStationSearch(){
  const stations=Object.entries(feed.stops).sort((a,b)=>a[1].name.localeCompare(b[1].name)).map(([id,s])=>({id,name:s.name}));
  for(const id of ['from','to']){
-  const input=$(id+'-search'),list=$(id+'-options');let matches=[],active=-1;
+  const input=$(id+'-search'),list=$(id+'-options');let matches=[],active=-1,pointerStart=null;
   input.disabled=false;
   function close(){list.hidden=true;input.setAttribute('aria-expanded','false');input.removeAttribute('aria-activedescendant');active=-1;}
   function paint(){list.innerHTML=matches.length?matches.map((s,i)=>`<span role="option" id="${id}-option-${i}" data-index="${i}" aria-selected="${i===active}" class="station-option">${esc(s.name)}</span>`).join(''):'<span class="station-no-results">No matching stations</span>';if(active>=0){input.setAttribute('aria-activedescendant',`${id}-option-${active}`);$(id+'-option-'+active).scrollIntoView({block:'nearest'});}else input.removeAttribute('aria-activedescendant');}
@@ -20,9 +20,18 @@ function setupStationSearch(){
   input.addEventListener('focus',()=>{input.select();show(true);});
   input.addEventListener('input',()=>show());
   input.addEventListener('keydown',e=>{if(e.key==='Escape'){close();syncStationSearch();return;}if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();if(list.hidden)show(true);if(matches.length){active=(active+(e.key==='ArrowDown'?1:-1)+matches.length)%matches.length;paint();}}if(e.key==='Enter'){e.preventDefault();choose(active<0?0:active);}});
-  list.addEventListener('pointerdown',e=>e.preventDefault());
-  list.addEventListener('click',e=>{let option=e.target.closest('[data-index]');if(option)choose(+option.dataset.index);});
-  input.addEventListener('blur',()=>{close();syncStationSearch();});
+  // Commit a tap before mobile blur can hide the result; allow dragging to scroll.
+  list.addEventListener('pointerdown',e=>{pointerStart={x:e.clientX,y:e.clientY};});
+  list.addEventListener('pointerup',e=>{
+   const start=pointerStart;pointerStart=null;
+   const option=e.target.closest('[data-index]');
+   if(start&&option&&Math.hypot(e.clientX-start.x,e.clientY-start.y)<12){e.preventDefault();e.stopPropagation();choose(+option.dataset.index);}
+  });
+  list.addEventListener('pointercancel',()=>{pointerStart=null;});
+  // Prevent the wrapping label from refocusing the search and reopening the list.
+  list.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();let option=e.target.closest('[data-index]');if(option&&!list.hidden)choose(+option.dataset.index);});
+  input.addEventListener('blur',()=>{if(pointerStart)return;close();syncStationSearch();});
+  document.addEventListener('pointerdown',e=>{if(!input.parentElement.contains(e.target)){pointerStart=null;close();input.value=feed.stops[$(id).value]?.name||(id==='to'?'All destinations':'');}});
  }
 }
 
