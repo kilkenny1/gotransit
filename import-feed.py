@@ -105,7 +105,6 @@ def combine(feeds, today=None):
                 if key not in SHARED:
                     raise ValueError(f'Unexpected station collision: {key}')
                 existing = result['stops'][key]
-                existing['name'] = existing['name'].replace(' GO', '') + ' GO / UP'
                 existing['accessible'] = existing['accessible'] or stop['accessible']
             else:
                 result['stops'][key] = dict(stop)

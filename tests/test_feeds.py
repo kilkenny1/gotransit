@@ -39,7 +39,7 @@ class FeedTests(unittest.TestCase):
         go, up = fixture('GO'), fixture('UP')
         result = module.combine({'GO': go, 'UP': up}, today='20261026')
         self.assertEqual(len(result['stops']), 3)
-        self.assertEqual(result['stops']['UN']['name'], 'Union Station GO / UP')
+        self.assertEqual(result['stops']['UN']['name'], 'Union Station GO')
         self.assertEqual(result['days']['20261026'], [0, 1])
         self.assertEqual([p[0] for p in result['patterns']], ['GO', 'UP'])
         self.assertEqual(result['sources']['UP']['end'], '20261031')
