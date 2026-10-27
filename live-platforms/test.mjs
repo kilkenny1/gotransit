@@ -20,3 +20,7 @@ assert.match(vm.runInContext(`platformLabel(['LW','',[],'1639'],1427,'2026-10-26
 vm.runInContext(`platforms.updatedAt='2020-01-01T00:00:00Z';`,context);
 assert.match(vm.runInContext(`platformLabel(['LW','',[],'1639'],1427,'2026-10-26','UN')`,context),/unavailable/);
 console.log('Passed: platform matching, timezone conversion, actual/scheduled priority, unauthorized and stale data rejection.');
+
+assert.match(vm.runInContext(`auroraIndicator(['BR','Aurora GO'])`,context),/Aurora/);
+assert.equal(vm.runInContext(`auroraIndicator(['BR','Allandale Waterfront GO'])`,context),'');
+assert.equal(vm.runInContext(`auroraIndicator(['LW','Aurora GO'])`,context),'');
