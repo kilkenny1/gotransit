@@ -46,3 +46,7 @@ Official references:
 ## GitHub Pages hosting
 
 In repository Settings → Pages, set Source to **GitHub Actions**. The included deployment workflow publishes `dist` on site changes and after successful daily feed refreshes. The site URL is https://kilkenny1.github.io/gotransit.github.io/. The workflow can also be run manually from Actions.
+
+## iPhone Home Screen
+
+Open the published HTTPS site in Safari, tap Share → Add to Home Screen, then Add. It launches in standalone mode as Railboard with its own train icon. The manifest uses relative URLs so installation works under this repository's GitHub Pages path. Safe-area padding supports the notch and home indicator, and mobile form controls use 16px text to avoid focus zoom. If you installed an older version, remove its Home Screen icon and add it again to refresh installation metadata. Internet access is required to load current schedules.
