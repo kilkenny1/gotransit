@@ -1,8 +1,8 @@
 {
   "id": "./",
-  "name": "Railboard \u2014 GO Train Departures",
+  "name": "Railboard \u2014 GO & UP Train Departures",
   "short_name": "Railboard",
-  "description": "GO train schedules and direct train station filters.",
+  "description": "GO Transit and UP Express schedules with direct train station filters.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

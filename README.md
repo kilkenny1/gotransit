@@ -1,6 +1,6 @@
 # Railboard
 
-A static, responsive GO train departure board using official Metrolinx GTFS schedule data. Includes origin/destination filtering in stop order, seven line filters, date selection, station swapping, expandable stop sequences, Toronto local time, and shareable URLs.
+A static, responsive GO and UP Express train departure board using both official Metrolinx GTFS feeds. Includes origin/destination filtering in stop order, eight line filters, date selection, station swapping, expandable stop sequences, Toronto local time, and shareable URLs.
 
 ## Run
 
@@ -12,9 +12,9 @@ Open http://localhost:4175.
 
 ## Update schedules
 
-Download the current GO GTFS ZIP from https://www.gotransit.com/en/partner-with-us/software-developers and run:
+Download the current GO and UP Express GTFS ZIPs from https://www.gotransit.com/en/partner-with-us/software-developers and run:
 
-    python3 import-feed.py /absolute/path/to/GO-GTFS.zip
+    python3 import-feed.py /absolute/path/to/GO-GTFS.zip /absolute/path/to/UP-GTFS.zip
 
 The importer has no third-party dependencies. It retains train routes only, resolves calendar_dates exceptions, and compacts trips for browser use. Publish the updated dist folder to any static host. The included daily GitHub Actions workflow refreshes the bundled schedule after deployment setup below. Platform assignments, service alerts, and live delays are not provided by this static feed.
 
@@ -31,7 +31,7 @@ JavaScript syntax checked. Browser verified initial Union departures and Union â
 
 The workflow runs daily at 10:23 UTC (06:23 Toronto during daylight time; 05:23 during standard time), with a manual trigger available. GitHub schedules may be delayed; public-repository schedules may be disabled after 60 days without repository activity. Check GitHub Actions if updates stop.
 
-It downloads directly from Metrolinx, validates the train timetable, and atomically replaces `dist/feed.json` only when schedule content changes. Download failures, invalid files, and expired feeds fail the workflow without replacing the last good schedule. The resulting bot commit triggers Cloudflare's Git integration to redeploy. GitHub failure notifications follow your account's Actions notification settings.
+It downloads both feeds directly from Metrolinx, validates the train timetable, and atomically replaces `dist/feed.json` only when schedule content changes. Download failures, invalid files, and expired feeds fail the workflow without replacing the last good schedule. The resulting bot commit triggers Cloudflare's Git integration to redeploy. GitHub failure notifications follow your account's Actions notification settings.
 
 A Cloudflare drag-and-drop deployment does not update automatically. Use a new Git-integrated Pages project if your existing project uses Direct Upload. This workflow is included in the source download but is not running until you upload it to GitHub and enable it. The included Deploy GitHub Pages workflow runs after successful feed refreshes, including bot commits.
 
@@ -63,3 +63,7 @@ To enable:
 3. Set `platformEndpoint` in `dist/config.js` to the returned HTTPS Worker URL, then push the change. Do not commit the API key.
 
 GitHub Pages hosts the static site; the live Worker must be deployed separately. Live connectivity cannot be tested without a valid API key. Current platform assignments may change; confirm against station screens.
+
+## UP Express
+
+Both feeds are downloaded in each daily refresh. A failure or expired feed prevents replacement of the combined last-good schedule. UP Express is a separate blue line; Pearson Airport is searchable. Shared Union, Bloor, Mount Dennis and Weston stops are merged by their explicit official station codes; other UP stops are namespaced to avoid ID collisions. The date selector shows operator-specific coverage warnings. UP Express live platforms are unavailable because the included platform adapter has only been prepared for GO service; UP schedule data does not contain platform assignments.
