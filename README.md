@@ -50,3 +50,5 @@ In repository Settings → Pages, set Source to **GitHub Actions**. The included
 ## iPhone Home Screen
 
 Open the published HTTPS site in Safari, tap Share → Add to Home Screen, then Add. It launches in standalone mode as Railboard with its own train icon. The manifest uses relative URLs so installation works under this repository's GitHub Pages path. Safe-area padding supports the notch and home indicator, and mobile form controls use 16px text to avoid focus zoom. If you installed an older version, remove its Home Screen icon and add it again to refresh installation metadata. Internet access is required to load current schedules.
+
+Station fields support typing partial names or station codes, touch selection, arrow keys, Enter, and Escape. Uncommitted text reverts to the selected station when leaving the field. Mobile layout verified at 390px and 320px widths with no horizontal document overflow; iPhone hardware testing remains recommended.
