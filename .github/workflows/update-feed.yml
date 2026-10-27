@@ -1,0 +1,34 @@
+name: Update GO schedule
+on:
+  schedule:
+    - cron: '23 10 * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: update-go-feed
+  cancel-in-progress: false
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download and validate official GTFS
+        run: python3 import-feed.py --download
+      - name: Commit updated schedule
+        run: |
+          if git diff --quiet -- dist/feed.json; then
+            echo "Schedule is unchanged."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dist/feed.json
+          git commit -m "Update official GO schedule"
+          git push
