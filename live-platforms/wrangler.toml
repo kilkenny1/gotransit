@@ -1,0 +1,5 @@
+name = "gotransit-platforms"
+main = "worker.mjs"
+compatibility_date = "2026-10-26"
+[vars]
+ALLOWED_ORIGIN = "https://kilkenny1.github.io"

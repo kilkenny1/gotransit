@@ -45,10 +45,21 @@ Official references:
 
 ## GitHub Pages hosting
 
-In repository Settings → Pages, set Source to **GitHub Actions**. The included deployment workflow publishes `dist` on site changes and after successful daily feed refreshes. The site URL is https://kilkenny1.github.io/gotransit.github.io/. The workflow can also be run manually from Actions.
+In repository Settings → Pages, set Source to **GitHub Actions**. The included deployment workflow publishes `dist` on site changes and after successful daily feed refreshes. The site URL is https://kilkenny1.github.io/gotransit/. The workflow can also be run manually from Actions.
 
 ## iPhone Home Screen
 
 Open the published HTTPS site in Safari, tap Share → Add to Home Screen, then Add. It launches in standalone mode as Railboard with its own train icon. The manifest uses relative URLs so installation works under this repository's GitHub Pages path. Safe-area padding supports the notch and home indicator, and mobile form controls use 16px text to avoid focus zoom. If you installed an older version, remove its Home Screen icon and add it again to refresh installation metadata. Internet access is required to load current schedules.
 
 Station fields support typing partial names or station codes, touch selection, arrow keys, Enter, and Escape. Uncommitted text reverts to the selected station when leaving the field. Mobile layout verified at 390px and 320px widths with no horizontal document overflow; iPhone hardware testing remains recommended.
+
+## Live platform assignments
+
+The GTFS timetable has no platform assignments. Rows show unavailable until a live source is connected. The included Cloudflare Worker uses Metrolinx's Stop/NextService API, keeps the API key server-side, and caches results for 30 seconds. It rejects stale source data. The UI matches station, trip number, local departure date and scheduled minute; future dates show a dash. Actual platforms take precedence over explicitly labelled scheduled platforms. Never infer platforms from previous trips.
+
+To enable:
+1. Obtain a Metrolinx Open Data API key: https://api.openmetrolinx.com/OpenDataAPI/Help/Registration/en
+2. In `live-platforms`, run `npx wrangler secret put METROLINX_API_KEY` and enter the key at its prompt. Run `npx wrangler deploy`. (Use `npx wrangler dev` for local configuration.)
+3. Set `platformEndpoint` in `dist/config.js` to the returned HTTPS Worker URL, then push the change. Do not commit the API key.
+
+GitHub Pages hosts the static site; the live Worker must be deployed separately. Live connectivity cannot be tested without a valid API key. Current platform assignments may change; confirm against station screens.
