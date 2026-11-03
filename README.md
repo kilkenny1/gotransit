@@ -79,3 +79,7 @@ Secret storage: https://developers.cloudflare.com/workers/configuration/secrets/
 ## UP Express
 
 Both feeds are downloaded in each daily refresh. A failure or expired feed prevents replacement of the combined last-good schedule. UP Express is a separate blue line; Pearson Airport is searchable. Shared Union, Bloor, Mount Dennis and Weston stops are merged by their explicit official station codes; other UP stops are namespaced to avoid ID collisions. The date selector shows operator-specific coverage warnings. UP Express live platforms are unavailable because the included platform adapter has only been prepared for GO service; UP schedule data does not contain platform assignments.
+
+## Favourite routes
+
+Choose a start and end station, then select **Save route**. Saved route buttons sit between the journey search and line filters. Select a favourite to apply both stations immediately; select ⇄ on the favourite to reverse the journey. The same station pair remains a single favourite in either direction. Use × to remove a route. Reset clears the current journey without deleting favourites. Favourites are saved locally in the current browser, do not contain API credentials, and do not sync across devices.
