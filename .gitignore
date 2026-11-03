@@ -3,3 +3,7 @@ __pycache__/
 .wrangler/
 node_modules/
 .dev.vars
+
+.dev.vars*
+.env*
+!.env.example

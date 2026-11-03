@@ -1,5 +1,20 @@
 name = "gotransit-platforms"
 main = "worker.mjs"
-compatibility_date = "2026-10-26"
+compatibility_date = "2026-11-03"
+workers_dev = true
 [vars]
 ALLOWED_ORIGIN = "https://kilkenny1.github.io"
+[[ratelimits]]
+name = "CLIENT_RATE_LIMITER"
+namespace_id = "1001"
+[ratelimits.simple]
+limit = 30
+period = 60
+[[ratelimits]]
+name = "UPSTREAM_RATE_LIMITER"
+namespace_id = "1002"
+[ratelimits.simple]
+limit = 30
+period = 60
+[observability]
+enabled = false

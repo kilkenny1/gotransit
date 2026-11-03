@@ -53,16 +53,28 @@ Open the published HTTPS site in Safari, tap Share → Add to Home Screen, then 
 
 Station fields support typing partial names or station codes, touch selection, arrow keys, Enter, and Escape. Uncommitted text reverts to the selected station when leaving the field. Mobile layout verified at 390px and 320px widths with no horizontal document overflow; iPhone hardware testing remains recommended.
 
-## Live platform assignments
+## Live train positions and platform assignments
 
-The GTFS timetable has no platform assignments. Rows show unavailable until a live source is connected. The included Cloudflare Worker uses Metrolinx's Stop/NextService API, keeps the API key server-side, and caches results for 30 seconds. It rejects stale source data. The UI matches station, trip number, local departure date and scheduled minute; future dates show a dash. Actual platforms take precedence over explicitly labelled scheduled platforms. Never infer platforms from previous trips.
+The frontend calls a Cloudflare Worker. Only the Worker calls Metrolinx, using its encrypted `METROLINX_API_KEY` secret. Never put the key in `dist`, `config.js`, a GitHub secret used during frontend builds, or a committed dotenv file. `dist/config.js` contains only the public Worker endpoint.
 
-To enable:
-1. Obtain a Metrolinx Open Data API key: https://api.openmetrolinx.com/OpenDataAPI/Help/Registration/en
-2. In `live-platforms`, run `npx wrangler secret put METROLINX_API_KEY` and enter the key at its prompt. Run `npx wrangler deploy`. (Use `npx wrangler dev` for local configuration.)
-3. Set `platformEndpoint` in `dist/config.js` to the returned HTTPS Worker URL, then push the change. Do not commit the API key.
+The Worker supports `?mode=vehicles` for train-only GTFS-Realtime VehiclePosition data and `?station=UN` for departure platforms. It accepts only these fixed request shapes, validates inputs, strips unrelated upstream fields, rejects stale data, and uses a 30-second server-side cache. It restricts browser origins and rate-limits clients and upstream calls. Worker request logging is disabled. Errors are generic and do not contain upstream URLs or credentials.
 
-GitHub Pages hosts the static site; the live Worker must be deployed separately. Live connectivity cannot be tested without a valid API key. Current platform assignments may change; confirm against station screens.
+The board refreshes live feeds every 30 seconds while visible and preserves expanded rows during updates. Actual platforms take precedence over explicitly labelled scheduled platforms. Expanded trips show a fresh, matching train's latest reported stop and map link when available. Matching uses line, train number and service date. UP Express platform data is still unavailable through the GO departure adapter. Missing live data leaves the scheduled timetable usable.
+
+### Deploy the live backend
+
+1. Create a free Cloudflare account at https://dash.cloudflare.com/sign-up.
+2. From `live-platforms`, run `npx wrangler@4 login --scopes account:read user:read workers_scripts:write` and authorize Worker script access.
+3. Run `npx wrangler@4 deploy` to create the backend.
+4. Run `npx wrangler@4 secret put METROLINX_API_KEY` and enter your Metrolinx key at the hidden prompt. This stores the key as a Worker secret, not source code.
+5. Put the returned HTTPS Worker URL in `platformEndpoint` in `dist/config.js`, then push that frontend change.
+6. Run `node live-platforms/test.mjs` from the repository root to verify normalization and security-related response behavior.
+
+The public website displays public transit data. Keeping the key secret prevents visitors from extracting the Metrolinx credential. Origin restrictions are not authentication: a determined non-browser client can spoof an Origin header. Caching and rate limits reduce proxy abuse; making the data endpoint owner-only would require sign-in on the website as well.
+
+Cloudflare setup: https://developers.cloudflare.com/workers/get-started/guide/
+Secret storage: https://developers.cloudflare.com/workers/configuration/secrets/
+
 
 ## UP Express
 

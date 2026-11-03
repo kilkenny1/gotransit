@@ -24,3 +24,34 @@ console.log('Passed: platform matching, timezone conversion, actual/scheduled pr
 assert.match(vm.runInContext(`auroraIndicator(['BR','Aurora GO'])`,context),/Aurora/);
 assert.equal(vm.runInContext(`auroraIndicator(['BR','Allandale Waterfront GO'])`,context),'');
 assert.equal(vm.runInContext(`auroraIndicator(['LW','Aurora GO'])`,context),'');
+
+// Successful Metrolinx replies use code 200, and buses must not become train markers.
+const {normalizeVehicles,default:worker}=await import('./worker.mjs');
+assert.equal(normalize({...fixture,Metadata:{...fixture.Metadata,ErrorCode:'200'}},'UN',now).trips.length,1);
+const vehicle={trip:{trip_id:'20261026-LW-1639',route_id:'09261126-LW',start_date:'20261026'},position:{latitude:43.65,longitude:-79.38},timestamp:+now/1000,stop_id:'UN',current_status:'STOPPED_AT',vehicle:{license_plate:'private-unused-field'}};
+const positions={header:{timestamp:+now/1000},entity:[{vehicle},{vehicle:{...vehicle,trip:{...vehicle.trip,route_id:'09261126-41'}}},{vehicle:{...vehicle,timestamp:+now/1000-300}}]};
+const normalized=normalizeVehicles(positions,now);
+assert.equal(normalized.vehicles.length,1);
+assert.equal(normalized.vehicles[0].trip,'1639');
+assert.equal(normalized.vehicles[0].line,'LW');
+assert.ok(!JSON.stringify(normalized).includes('license_plate'));
+assert.throws(()=>normalizeVehicles(positions,new Date(+now+180000)),/Stale/);
+const key='test-private-value',env={METROLINX_API_KEY:key,ALLOWED_ORIGIN:'https://kilkenny1.github.io'};
+const request=(suffix='',origin=env.ALLOWED_ORIGIN)=>new Request('https://worker.example/'+suffix,{headers:{Origin:origin}});
+assert.equal((await worker.fetch(request('?mode=vehicles','https://other.example'),env,{})).status,403);
+assert.equal((await worker.fetch(request('?mode=vehicles&url=https://other.example'),env,{})).status,400);
+assert.equal((await worker.fetch(request('?mode=vehicles'),{...env,CLIENT_RATE_LIMITER:{limit:async()=>({success:false})}},{})).status,429);
+globalThis.caches={default:{match:async()=>null,put:async()=>{}}};
+const originalFetch=globalThis.fetch;
+globalThis.fetch=async()=>{throw Error('upstream error containing '+key);};
+const failure=await worker.fetch(request('?mode=vehicles'),env,{waitUntil(){}});
+assert.equal(failure.status,502);assert.ok(!(await failure.text()).includes(key));
+globalThis.fetch=originalFetch;
+console.log('Passed: HTTP-200 metadata, train-only vehicle normalization, freshness, origin checks, rate limiting, and secret-safe errors.');
+
+vm.runInContext(`feed={stops:{UN:{name:'Union Station GO'}}};vehicleData={updatedAt:'${new Date().toISOString()}',vehicles:[{line:'LW',trip:'1639',date:'2026-10-26',latitude:43.65,longitude:-79.38,stop:'UN',status:'STOPPED_AT',updatedAt:'${new Date().toISOString()}'}]};`,context);
+assert.match(vm.runInContext(`vehicleLabel(['LW','Aldershot GO',[['UN',60,60]],'1639'],0,60,'2026-10-26')`,context),/At Union Station GO/);
+assert.equal(vm.runInContext(`vehicleLabel(['LE','Oshawa GO',[['UN',60,60]],'1639'],0,60,'2026-10-26')`,context),'');
+vm.runInContext(`vehicleData.vehicles[0].date='2026-10-25';`,context);
+assert.match(vm.runInContext(`vehicleLabel(['LW','Aldershot GO',[['UN',1500,1500]],'1639'],0,60,'2026-10-26')`,context),/View on map/);
+console.log('Passed: frontend vehicle matching by line, trip, service date and midnight rollover.');

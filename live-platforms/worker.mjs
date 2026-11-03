@@ -1,7 +1,8 @@
-// Deploy separately from GitHub Pages; METROLINX_API_KEY stays in Worker secrets.
+// The API key is a Cloudflare secret. It is never returned or sent to the browser.
 const TORONTO = new Intl.DateTimeFormat('en-CA',{timeZone:'America/Toronto',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'});
-function localParts(date){return Object.fromEntries(TORONTO.formatToParts(date).map(x=>[x.type,x.value]));}
-function localStamp(date){const p=localParts(date);return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}`;}
+const LINES=new Set(['LW','LE','BR','KI','MI','RH','ST','UP']);
+function localStamp(date){const p=Object.fromEntries(TORONTO.formatToParts(date).map(x=>[x.type,x.value]));return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}`;}
+function fresh(timestamp,now,maxAge=120){const age=(+now-Date.parse(timestamp))/1000;return Number.isFinite(age)&&age>=-60&&age<=maxAge;}
 export function departureParts(value){
  if(typeof value!=='string')return null;
  const microsoft=/^\/Date\((\d+)(?:[+-]\d+)?\)\/$/.exec(value);
@@ -11,31 +12,55 @@ export function departureParts(value){
  return m?{date:m[1],minute:+m[2]*60 + +m[3]}:null;
 }
 export function normalize(payload,station,now=new Date()){
- if(String(payload.Metadata?.ErrorCode||'0')!=='0')throw Error('Upstream rejected request');
- const stamp=String(payload.Metadata?.TimeStamp||'').replace(' ','T');
- const age=(Date.parse(localStamp(now)+'Z')-Date.parse(stamp+'Z'))/1000;
- if(!Number.isFinite(age)||age>120||age< -60)throw Error('Stale upstream data');
+ if(!payload.Metadata||!['0','200'].includes(String(payload.Metadata.ErrorCode||'0')))throw Error('Upstream rejected request');
+ const stamp=String(payload.Metadata.TimeStamp||'').replace(' ','T');
+ if(!fresh(stamp+'Z',new Date(localStamp(now)+'Z')))throw Error('Stale upstream data');
  if(!Array.isArray(payload.NextService?.Lines))throw Error('Invalid departure response');
- return {station,updatedAt:now.toISOString(),trips:payload.NextService.Lines.filter(t=>String(t.StopCode)===station).flatMap(t=>{
+ return {station,updatedAt:now.toISOString(),trips:payload.NextService.Lines.filter(t=>String(t.StopCode)===station&&(!t.ServiceType||t.ServiceType==='T')).flatMap(t=>{
   const d=departureParts(t.ScheduledDepartureTime);if(!d||!t.TripNumber)return [];
-  return [{trip:String(t.TripNumber),...d,actualPlatform:String(t.ActualPlatform||'').trim(),scheduledPlatform:String(t.ScheduledPlatform||'').trim()}];})};
+  return [{trip:String(t.TripNumber),line:String(t.LineCode||''),...d,actualPlatform:String(t.ActualPlatform||'').trim(),scheduledPlatform:String(t.ScheduledPlatform||'').trim()}];})};
+}
+export function normalizeVehicles(payload,now=new Date()){
+ const timestamp=Number(payload.header?.timestamp)*1000;
+ if(!Number.isFinite(timestamp)||!fresh(new Date(timestamp).toISOString(),now))throw Error('Stale vehicle feed');
+ if(!Array.isArray(payload.entity))throw Error('Invalid vehicle feed');
+ const vehicles=payload.entity.flatMap(entity=>{
+  if(entity.is_deleted)return [];
+  const v=entity.vehicle,t=v?.trip,p=v?.position;if(!v||!t||!p)return [];
+  const line=String(t.route_id||'').split('-').at(-1),trip=String(t.trip_id||'').split('-').at(-1),day=String(t.start_date||'');
+  const updated=Number(v.timestamp)*1000;
+  if(!LINES.has(line)||!/^\d{8}$/.test(day)||!trip||!Number.isFinite(updated))return [];
+  if(!fresh(new Date(updated).toISOString(),now))return [];
+  const lat=Number(p.latitude),lon=Number(p.longitude);
+  if(!Number.isFinite(lat)||!Number.isFinite(lon)||lat<41||lat>46||lon< -84||lon> -75)return [];
+  return [{line,trip,date:`${day.slice(0,4)}-${day.slice(4,6)}-${day.slice(6,8)}`,latitude:lat,longitude:lon,stop:String(v.stop_id||''),status:['INCOMING_AT','STOPPED_AT','IN_TRANSIT_TO'].includes(v.current_status)?v.current_status:'',updatedAt:new Date(updated).toISOString()}];
+ });
+ return {updatedAt:now.toISOString(),vehicles};
 }
 export default {async fetch(request,env,ctx){
- const url=new URL(request.url),station=url.searchParams.get('station')||'';
- const headers={'Content-Type':'application/json','Access-Control-Allow-Origin':env.ALLOWED_ORIGIN||'https://kilkenny1.github.io','Cache-Control':'no-store'};
+ const url=new URL(request.url),origin=request.headers.get('Origin'),allowed=env.ALLOWED_ORIGIN||'https://kilkenny1.github.io';
+ const headers={'Content-Type':'application/json','Access-Control-Allow-Origin':allowed,'Vary':'Origin','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'};
  const reply=(data,status=200)=>new Response(JSON.stringify(data),{status,headers});
  if(request.method!=='GET')return reply({error:'Method not allowed'},405);
- if(!/^[A-Z0-9]{2,8}$/.test(station))return reply({error:'Invalid station'},400);
- if(!env.METROLINX_API_KEY)return reply({error:'Live platforms are not configured'},503);
- const cacheKey=new Request(url.origin+'/cached-platforms?station='+station);
+ if(origin!==allowed)return reply({error:'Origin not allowed'},403);
+ const mode=url.searchParams.get('mode')||'platforms',station=url.searchParams.get('station')||'';
+ if(!['platforms','vehicles'].includes(mode))return reply({error:'Unknown feed'},400);
+ if(mode==='platforms'&&!/^[A-Z0-9]{2,8}$/.test(station))return reply({error:'Invalid station'},400);
+ // No arbitrary upstream URLs, API keys, or additional caller-supplied parameters.
+ if([...url.searchParams.keys()].some(k=>!['station','mode'].includes(k)))return reply({error:'Unknown parameter'},400);
+ if(!env.METROLINX_API_KEY)return reply({error:'Live data is not configured'},503);
+ if(env.CLIENT_RATE_LIMITER){const result=await env.CLIENT_RATE_LIMITER.limit({key:request.headers.get('CF-Connecting-IP')||'unknown'});if(!result.success)return reply({error:'Too many requests'},429);}
+ const cacheKey=new Request(url.origin+'/cache/'+mode+(mode==='platforms'?'/'+station:''));
  const cached=await caches.default.match(cacheKey);if(cached)return new Response(cached.body,{headers});
+ if(env.UPSTREAM_RATE_LIMITER){const result=await env.UPSTREAM_RATE_LIMITER.limit({key:'metrolinx'});if(!result.success)return reply({error:'Live data is busy. Try again shortly.'},503);}
  try{
-  const upstream=new URL('https://api.openmetrolinx.com/OpenDataAPI/api/V1/Stop/NextService/'+station);
+  const path=mode==='vehicles'?'Gtfs/Feed/VehiclePosition':'Stop/NextService/'+station;
+  const upstream=new URL('https://api.openmetrolinx.com/OpenDataAPI/api/V1/'+path);
   upstream.searchParams.set('key',env.METROLINX_API_KEY);
   const response=await fetch(upstream,{headers:{Accept:'application/json'},signal:AbortSignal.timeout(10000)});
   if(!response.ok)throw Error('Upstream unavailable');
-  const data=normalize(await response.json(),station);
+  const payload=await response.json(),data=mode==='vehicles'?normalizeVehicles(payload):normalize(payload,station);
   ctx.waitUntil(caches.default.put(cacheKey,new Response(JSON.stringify(data),{headers:{'Content-Type':'application/json','Cache-Control':'public,max-age=30'}})));
   return reply(data);
- }catch{return reply({error:'Live platform data is unavailable'},502);}
+ }catch{return reply({error:'Live data is temporarily unavailable'},502);}
 }};
