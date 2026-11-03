@@ -83,3 +83,5 @@ Both feeds are downloaded in each daily refresh. A failure or expired feed preve
 ## Favourite routes
 
 Choose a start and end station, then select **Save route**. Saved route buttons sit between the journey search and line filters. Select a favourite to apply both stations immediately; select ⇄ on the favourite to reverse the journey. The same station pair remains a single favourite in either direction. Use × to remove a route. Reset clears the current journey without deleting favourites. Favourites are saved locally in the current browser, do not contain API credentials, and do not sync across devices.
+
+The journey search starts collapsed with only the From field visible. Focusing or clicking that field expands the destination, date and search controls. Use the up-arrow button to collapse it again; selected route and date values are preserved.

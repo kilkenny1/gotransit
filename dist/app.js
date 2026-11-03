@@ -18,7 +18,8 @@ function setupStationSearch(){
   function paint(){list.innerHTML=matches.length?matches.map((s,i)=>`<span role="option" id="${id}-option-${i}" data-index="${i}" aria-selected="${i===active}" class="station-option">${esc(s.name)}</span>`).join(''):'<span class="station-no-results">No matching stations</span>';if(active>=0){input.setAttribute('aria-activedescendant',`${id}-option-${active}`);$(id+'-option-'+active).scrollIntoView({block:'nearest'});}else input.removeAttribute('aria-activedescendant');}
   function show(all=false){const query=all?'':input.value.trim().toLowerCase();const choices=id==='to'?[{id:'',name:'All destinations'},...stations]:stations;matches=choices.filter(s=>s.name.toLowerCase().includes(query)||s.id.toLowerCase()===query);active=-1;list.hidden=false;input.setAttribute('aria-expanded','true');paint();}
   function choose(index){if(!matches[index])return;$(id).value=matches[index].id;close();update();input.blur();}
-  input.addEventListener('focus',()=>{input.select();show(true);});
+  input.addEventListener('focus',()=>{if(id==='from')setSearchExpanded(true);input.select();show(true);});
+  input.addEventListener('click',()=>{if(id==='from')setSearchExpanded(true);});
   input.addEventListener('input',()=>show());
   input.addEventListener('keydown',e=>{if(e.key==='Escape'){close();syncStationSearch();return;}if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();if(list.hidden)show(true);if(matches.length){active=(active+(e.key==='ArrowDown'?1:-1)+matches.length)%matches.length;paint();}}if(e.key==='Enter'){e.preventDefault();choose(active<0?0:active);}});
   // Commit a tap before mobile blur can hide the result; allow dragging to scroll.
@@ -149,3 +150,10 @@ function setupFavoriteRoutes(){
  });
  window.addEventListener?.('storage',event=>{if(event.key===FAVORITE_ROUTES_KEY&&feed){favoriteRoutes=readFavoriteRoutes();renderFavoriteRoutes();}});
 }
+
+function setSearchExpanded(expanded){
+ const panel=$('journey-search');panel.classList.toggle('search-collapsed',!expanded);
+ $('collapse-search').setAttribute('aria-expanded',String(expanded));
+ if(!expanded){for(const id of ['from','to']){$(id+'-options').hidden=true;$(id+'-search').setAttribute('aria-expanded','false');$(id+'-search').removeAttribute('aria-activedescendant');}syncStationSearch();panel.focus({preventScroll:true});}
+}
+$('collapse-search').addEventListener('click',()=>setSearchExpanded(false));
