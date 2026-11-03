@@ -122,9 +122,10 @@ function persistFavoriteRoutes(){
 function renderFavoriteRoutes(){
  if(!feed)return;
  const from=$('from').value,to=$('to').value,key=routePairKey(from,to),valid=from&&to&&from!==to;
+ $('favorite-count').textContent=String(favoriteRoutes.length);
  const saved=valid&&favoriteRoutes.some(r=>routePairKey(r.from,r.to)===key);
  $('save-route').disabled=!valid;$('save-route').setAttribute('aria-pressed',String(Boolean(saved)));$('save-route').textContent=saved?'★ Saved route':'☆ Save route';
- $('favorites-note').textContent=favoriteRoutes.length?'Tap a route to apply it, or ⇄ to reverse it.':valid?'Save this journey for quick access on this device.':'Choose a start and end station to save a route.';
+ $('favorites-note').textContent=favoriteRoutes.length?'Save more routes using the search above. Tap a favourite to use it, or ⇄ to reverse it.':valid?'Save this journey for quick access on this device.':'Choose a start and end station to save a route.';
  $('favorite-routes-list').innerHTML=favoriteRoutes.map((r,index)=>{
   const active=routePairKey(r.from,r.to)===key,display=active?{from,to}:r;
   const label=feed.stops[display.from].name+' to '+feed.stops[display.to].name;
