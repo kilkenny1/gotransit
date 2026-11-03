@@ -1,4 +1,4 @@
-const $=id=>document.getElementById(id);let platforms=null,platformRequest=0,vehicleData=null,vehicleRequest=0;let favoriteRoutes=[];let feed,line='',lastRefresh=new Date();const fmt=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Toronto',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'});function now(){let p=Object.fromEntries(fmt.formatToParts(new Date()).map(x=>[x.type,x.value]));return {date:`${p.year}-${p.month}-${p.day}`,min:+p.hour*60 + +p.minute + +p.second/60,time:`${p.hour}:${p.minute}:${p.second}`}}function time(m){return `${String(Math.floor(m/60)%24).padStart(2,'0')}:${String(m%60).padStart(2,'0')}${m>=1440?' +1':''}`}function esc(v){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}function tick(){let n=now();$('clock').textContent=n.time;$('today').textContent=new Date().toLocaleDateString('en-CA',{timeZone:'America/Toronto',weekday:'short',month:'short',day:'numeric'}).toUpperCase()+' · ET'}tick();setInterval(tick,1000);
+const $=id=>document.getElementById(id);let platforms=null,platformRequest=0,vehicleData=null,vehicleRequest=0;let favoriteRoutes=[],searchReopenBlockedUntil=0;let feed,line='',lastRefresh=new Date();const fmt=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Toronto',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'});function now(){let p=Object.fromEntries(fmt.formatToParts(new Date()).map(x=>[x.type,x.value]));return {date:`${p.year}-${p.month}-${p.day}`,min:+p.hour*60 + +p.minute + +p.second/60,time:`${p.hour}:${p.minute}:${p.second}`}}function time(m){return `${String(Math.floor(m/60)%24).padStart(2,'0')}:${String(m%60).padStart(2,'0')}${m>=1440?' +1':''}`}function esc(v){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}function tick(){let n=now();$('clock').textContent=n.time;$('today').textContent=new Date().toLocaleDateString('en-CA',{timeZone:'America/Toronto',weekday:'short',month:'short',day:'numeric'}).toUpperCase()+' · ET'}tick();setInterval(tick,1000);
 function render(){if(!feed)return;let n=now(),date=$('date').value,from=$('from').value,to=$('to').value;let key=date.replaceAll('-',''),dayOffset=date===n.date?0:1;let results=[];let sources=feed.sources||{},relevant=line?[feed.lines[line].source]:Object.keys(sources),missing=relevant.filter(s=>!sources[s]?.dates.includes(key));let available=relevant.length&&missing.length===relevant.length?undefined:feed.days[key];$('coverage-notice').hidden=!missing.length;$('coverage-notice').textContent=missing.map(s=>(s==='UP'?'UP Express':'GO Transit')+' schedules are unavailable for this date.').join(' ');let ids=(available||[]).map(id=>[id,0]);if(date===n.date){let d=new Date(date+'T12:00:00Z');d.setUTCDate(d.getUTCDate()-1);let prev=d.toISOString().slice(0,10).replaceAll('-','');ids.push(...(feed.days[prev]||[]).map(id=>[id,-1440]))}
 for(let [id,offset] of ids){let p=feed.patterns[id];if(line&&p[0]!==line)continue;let i=p[2].findIndex(s=>s[0]===from&&s[3]!=='1');if(i<0)continue;let j=to?p[2].findIndex((s,k)=>k>i&&s[0]===to&&s[4]!=='1'):p[2].length-1;if(j<=i)continue;let departure=p[2][i][2]+offset;if(date===n.date&&departure<n.min)continue;if(offset<0&&departure<0)continue;results.push({p,i,j,departure,arrival:p[2][j][1]+offset})}results.sort((a,b)=>a.departure-b.departure);$('code').textContent=from;$('station').textContent=feed.stops[from].name;$('subtitle').textContent='Train departures · '+(to?'To '+feed.stops[to].name:'All destinations');$('count').textContent=results.length+' scheduled departure'+(results.length===1?'':'s')+(date===n.date?' remaining today':' on '+date);$('coverage').textContent=`Schedule imported ${feed.imported}. Feed coverage: ${Object.entries(feed.sources||{}).map(([s,c])=>(s==='UP'?'UP Express':'GO Transit')+': '+c.start+'–'+c.end).join('; ')}. Automatic feed refresh runs daily when the included GitHub workflow is enabled.`;
 if(!results.length){$('rows').innerHTML=`<div class="empty"><h3>${!available?'Schedule unavailable':from===to?'Choose different stations':'No direct trains found'}</h3><p>${!available?'This date is outside the downloaded feed. Choose a date within the feed coverage.':from===to?'Your start and end station must be different.':'Try another line, destination, or travel date. Only direct trains with remaining departures are shown.'}</p></div>`;return}
@@ -18,7 +18,7 @@ function setupStationSearch(){
   function paint(){list.innerHTML=matches.length?matches.map((s,i)=>`<span role="option" id="${id}-option-${i}" data-index="${i}" aria-selected="${i===active}" class="station-option">${esc(s.name)}</span>`).join(''):'<span class="station-no-results">No matching stations</span>';if(active>=0){input.setAttribute('aria-activedescendant',`${id}-option-${active}`);$(id+'-option-'+active).scrollIntoView({block:'nearest'});}else input.removeAttribute('aria-activedescendant');}
   function show(all=false){const query=all?'':input.value.trim().toLowerCase();const choices=id==='to'?[{id:'',name:'All destinations'},...stations]:stations;matches=choices.filter(s=>s.name.toLowerCase().includes(query)||s.id.toLowerCase()===query);active=-1;list.hidden=false;input.setAttribute('aria-expanded','true');paint();}
   function choose(index){if(!matches[index])return;$(id).value=matches[index].id;close();update();input.blur();}
-  input.addEventListener('focus',()=>{if(id==='from')setSearchExpanded(true);input.select();show(true);});
+  input.addEventListener('focus',()=>{if(id==='from'&&!setSearchExpanded(true)){input.blur();return;}input.select();show(true);});
   input.addEventListener('click',()=>{if(id==='from')setSearchExpanded(true);});
   input.addEventListener('input',()=>show());
   input.addEventListener('keydown',e=>{if(e.key==='Escape'){close();syncStationSearch();return;}if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();if(list.hidden)show(true);if(matches.length){active=(active+(e.key==='ArrowDown'?1:-1)+matches.length)%matches.length;paint();}}if(e.key==='Enter'){e.preventDefault();choose(active<0?0:active);}});
@@ -151,9 +151,21 @@ function setupFavoriteRoutes(){
  window.addEventListener?.('storage',event=>{if(event.key===FAVORITE_ROUTES_KEY&&feed){favoriteRoutes=readFavoriteRoutes();renderFavoriteRoutes();}});
 }
 
-function setSearchExpanded(expanded){
- const panel=$('journey-search');panel.classList.toggle('search-collapsed',!expanded);
+function setSearchExpanded(expanded,restoreFocus=false){
+ if(expanded&&Date.now()<searchReopenBlockedUntil)return false;
+ const panel=$('journey-search');
+ if(!expanded){
+  searchReopenBlockedUntil=Date.now()+400;
+  // Dismiss the keyboard before removing the expanded controls on iPhone.
+  if(panel.contains(document.activeElement))document.activeElement.blur();
+  for(const id of ['from','to']){$(id+'-options').hidden=true;$(id+'-search').setAttribute('aria-expanded','false');$(id+'-search').removeAttribute('aria-activedescendant');}
+  syncStationSearch();
+ }
+ panel.classList.toggle('search-collapsed',!expanded);
  $('collapse-search').setAttribute('aria-expanded',String(expanded));
- if(!expanded){for(const id of ['from','to']){$(id+'-options').hidden=true;$(id+'-search').setAttribute('aria-expanded','false');$(id+'-search').removeAttribute('aria-activedescendant');}syncStationSearch();panel.focus({preventScroll:true});}
+ if(!expanded&&restoreFocus)panel.focus({preventScroll:true});
+ return true;
 }
-$('collapse-search').addEventListener('click',()=>setSearchExpanded(false));
+// Handle touch before hiding the header can redirect a delayed mobile click.
+$('collapse-search').addEventListener('pointerdown',event=>{if(event.button!==0)return;event.preventDefault();event.stopPropagation();setSearchExpanded(false);});
+$('collapse-search').addEventListener('click',event=>{event.preventDefault();event.stopPropagation();setSearchExpanded(false,event.detail===0);});
