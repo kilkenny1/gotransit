@@ -55,3 +55,46 @@ assert.equal(vm.runInContext(`vehicleLabel(['LE','Oshawa GO',[['UN',60,60]],'163
 vm.runInContext(`vehicleData.vehicles[0].date='2026-10-25';`,context);
 assert.match(vm.runInContext(`vehicleLabel(['LW','Aldershot GO',[['UN',1500,1500]],'1639'],0,60,'2026-10-26')`,context),/View on map/);
 console.log('Passed: frontend vehicle matching by line, trip, service date and midnight rollover.');
+
+// UP uses its separate feed, the same private key, and the schedule's canonical stops.
+const upVehicle={...vehicle,trip:{trip_id:'20261026-4341',route_id:'UP',start_date:'20261026'},stop_id:'PA'};
+const upPositions={header:{timestamp:+now/1000},entity:[{vehicle:upVehicle}]};
+const up=normalizeVehicles(upPositions,now,'UP').vehicles[0];
+assert.equal(up.line,'UP');assert.equal(up.trip,'4341');assert.equal(up.stop,'UP:PA');
+assert.equal(normalizeVehicles({...upPositions,entity:[{vehicle:{...upVehicle,stop_id:'UN'}}]},now,'UP').vehicles[0].stop,'UN');
+const current=()=>({header:{timestamp:Date.now()/1000},entity:[{vehicle:{...upVehicle,timestamp:Date.now()/1000}}]});
+let calls=[];
+globalThis.fetch=async url=>{
+ calls.push(new URL(url));
+ return Response.json(current());
+};
+try{
+ const response=await worker.fetch(request('?mode=vehicles'),env,{waitUntil(){}});
+ const combined=await response.json();
+ assert.equal(response.status,200);
+ assert.equal(calls.length,2);
+ assert.deepEqual(calls.map(url=>url.pathname),['/OpenDataAPI/api/V1/Gtfs/Feed/VehiclePosition','/OpenDataAPI/api/V1/UP/Gtfs/Feed/VehiclePosition']);
+ assert.ok(calls.every(url=>url.searchParams.get('key')===key));
+ assert.equal(combined.sources.UP.available,true);
+ assert.ok(combined.vehicles.some(v=>v.line==='UP'&&v.stop==='UP:PA'));
+ assert.ok(!JSON.stringify(combined).includes(key));
+ for(const failedSource of ['GO','UP']){
+  globalThis.fetch=async url=>{
+   const source=new URL(url).pathname.includes('/UP/')?'UP':'GO';
+   if(source===failedSource)throw Error('Unavailable '+key);
+   return Response.json(current());
+  };
+  const partial=await worker.fetch(request('?mode=vehicles'),env,{waitUntil(){}});
+  const data=await partial.json();
+  assert.equal(partial.status,200);
+  assert.equal(data.sources[failedSource].available,false);
+  assert.equal(data.sources[failedSource==='UP'?'GO':'UP'].available,true);
+  assert.ok(data.vehicles.length>0);
+  assert.ok(!JSON.stringify(data).includes(key));
+ }
+}finally{globalThis.fetch=originalFetch;}
+console.log('Passed: UP trip/stop mapping, both fixed upstream paths, shared secret, and independent feed failures.');
+
+vm.runInContext(`feed.stops['UP:PA']={name:'UP Express Pearson Airport'};vehicleData.vehicles=[{line:'UP',trip:'4341',date:'2026-10-26',latitude:43.68,longitude:-79.61,stop:'UP:PA',status:'STOPPED_AT',updatedAt:'${new Date().toISOString()}'}];`,context);
+assert.match(vm.runInContext(`vehicleLabel(['UP','Pearson Airport',[['UN',60,60]],'4341'],0,60,'2026-10-26')`,context),/At UP Express Pearson Airport/);
+console.log('Passed: UP live position renders on a matching scheduled departure.');
