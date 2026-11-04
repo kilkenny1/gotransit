@@ -106,3 +106,8 @@ assert.equal(vm.runInContext(`pairedPlatform('7 / 8','UN')`,context),'7 / 8');
 assert.equal(vm.runInContext(`pairedPlatform('4','UN')`,context),'4');
 assert.equal(vm.runInContext(`pairedPlatform('7','OA')`,context),'7');
 console.log('Passed: Union paired platforms preserve explicit pairs, single platforms and other stations.');
+vm.runInContext(`platforms={station:'UN',updatedAt:'${new Date().toISOString()}',trips:[{line:'UP',trip:'4341',date:'2026-10-26',minute:1427,actualPlatform:'1'}]};`,context);
+assert.match(vm.runInContext(`platformLabel(['UP','',[],'4341'],1427,'2026-10-26','UN')`,context),/<strong>1<\/strong>/);
+vm.runInContext(`platforms.trips[0].line='LW';`,context);
+assert.match(vm.runInContext(`platformLabel(['UP','',[],'4341'],1427,'2026-10-26','UN')`,context),/not supplied/);
+console.log('Passed: UP assignments can display when supplied; GO trip numbers cannot be matched to UP.');
