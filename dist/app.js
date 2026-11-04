@@ -38,7 +38,7 @@ function setupStationSearch(){
 }
 
 function platformLabel(p,departure,date,station){
- const fallback=p[0]==='UP'?'Platform <strong>1</strong> <span class="platform-unknown">default</span>':null;
+ const fallback=p[0]==='UP'?'Platform <strong>1</strong>':null;
  if(date!==now().date)return fallback||'Platform <span class="platform-unknown">—</span>';
  if(!platforms||platforms.station!==station||Date.now()-Date.parse(platforms.updatedAt)>90000)return fallback||'Platform <span class="platform-unknown">unavailable</span>';
  const travel=new Date(date+'T12:00:00Z');travel.setUTCDate(travel.getUTCDate()+Math.floor(departure/1440));const departureDate=travel.toISOString().slice(0,10),minute=((departure%1440)+1440)%1440;

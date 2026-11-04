@@ -109,13 +109,13 @@ console.log('Passed: Union paired platforms preserve explicit pairs, single plat
 vm.runInContext(`platforms={station:'UN',updatedAt:'${new Date().toISOString()}',trips:[{line:'UP',trip:'4341',date:'2026-10-26',minute:1427,actualPlatform:'1'}]};`,context);
 assert.match(vm.runInContext(`platformLabel(['UP','',[],'4341'],1427,'2026-10-26','UN')`,context),/<strong>1<\/strong>/);
 vm.runInContext(`platforms.trips[0].line='LW';`,context);
-assert.match(vm.runInContext(`platformLabel(['UP','',[],'4341'],1427,'2026-10-26','UN')`,context),/default/);
+assert.match(vm.runInContext(`platformLabel(['UP','',[],'4341'],1427,'2026-10-26','UN')`,context),/<strong>1<\/strong>/);
 console.log('Passed: UP assignments can display when supplied; GO trip numbers cannot be matched to UP.');
 
 vm.runInContext(`platforms.trips[0].line='UP';platforms.trips[0].actualPlatform='2';`,context);
 assert.match(vm.runInContext(`platformLabel(['UP','',[],'4341'],1427,'2026-10-26','UN')`,context),/<strong>2<\/strong>/);
 vm.runInContext(`platforms=null;`,context);
-assert.match(vm.runInContext(`platformLabel(['UP','',[],'4341'],1427,'2026-10-26','UN')`,context),/default/);
+assert.match(vm.runInContext(`platformLabel(['UP','',[],'4341'],1427,'2026-10-26','UN')`,context),/<strong>1<\/strong>/);
 const {normalizeUnion}=await import('./worker.mjs');
 const unionFixture={Metadata:fixture.Metadata,AllDepartures:{Trip:[{TripNumber:'1639',Service:'Lakeshore West',ServiceType:'T',Time:'2026-10-26 23:47:00',Platform:'7 & 8'},{TripNumber:'1',ServiceType:'B',Time:'2026-10-26 23:47:00',Platform:'5'}]}};
 assert.deepEqual(normalizeUnion(unionFixture,now).trips,[{trip:'1639',line:'LW',date:'2026-10-26',minute:1427,actualPlatform:'7 / 8',scheduledPlatform:''}]);
