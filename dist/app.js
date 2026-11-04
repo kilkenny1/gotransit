@@ -38,13 +38,14 @@ function setupStationSearch(){
 }
 
 function platformLabel(p,departure,date,station){
- if(date!==now().date)return 'Platform <span class="platform-unknown">—</span>';
- if(!platforms||platforms.station!==station||Date.now()-Date.parse(platforms.updatedAt)>90000)return 'Platform <span class="platform-unknown">unavailable</span>';
+ const fallback=p[0]==='UP'?'Platform <strong>1</strong> <span class="platform-unknown">default</span>':null;
+ if(date!==now().date)return fallback||'Platform <span class="platform-unknown">—</span>';
+ if(!platforms||platforms.station!==station||Date.now()-Date.parse(platforms.updatedAt)>90000)return fallback||'Platform <span class="platform-unknown">unavailable</span>';
  const travel=new Date(date+'T12:00:00Z');travel.setUTCDate(travel.getUTCDate()+Math.floor(departure/1440));const departureDate=travel.toISOString().slice(0,10),minute=((departure%1440)+1440)%1440;
  const trip=platforms.trips.find(t=>(p[0]!=='UP'||t.line==='UP')&&String(t.trip).replace(/^0+/,'')===String(p[3]).replace(/^0+/,'')&&t.date===departureDate&&t.minute===minute);
  const clean=value=>{value=String(value||'').trim();return /^(?:|[-—]|0|TBA|TBD|N\/A|Unknown)$/i.test(value)?'':value;};
  const actual=clean(trip?.actualPlatform),scheduled=clean(trip?.scheduledPlatform);
- if(p[0]==='UP'&&!actual&&!scheduled)return 'Platform <span class="platform-unknown">not supplied by UP feed</span>';
+ if(p[0]==='UP'&&!actual&&!scheduled)return fallback;
  return actual?'Platform <strong>'+esc(pairedPlatform(actual,station))+'</strong>':scheduled?'Platform <strong>'+esc(scheduled)+'</strong> <span class="platform-unknown">scheduled</span>':'Platform <span class="platform-unknown">not posted</span>';
 }
 async function refreshPlatforms(){
