@@ -5,6 +5,7 @@ import csv
 import datetime as dt
 import io
 import json
+import math
 import pathlib
 import time
 import urllib.request
@@ -13,6 +14,22 @@ import zipfile
 BASE = pathlib.Path(__file__).resolve().parent
 FEED_URLS = {name: 'https://assets.metrolinx.com/raw/upload/Documents/Metrolinx/Open%20Data/' + filename for name, filename in [('GO', 'GO-GTFS.zip'), ('UP', 'UP-GTFS.zip')]}
 SHARED = {'UN', 'BL', 'MD', 'WE'}
+
+
+def simplify(points, tolerance=0.00015):
+    """Reduce GTFS geometry while retaining bends (roughly 15 m tolerance)."""
+    if len(points) < 3:
+        return points
+    a, b = points[0], points[-1]
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    length = dx * dx + dy * dy
+    def distance(p):
+        t = max(0, min(1, ((p[0]-a[0])*dx + (p[1]-a[1])*dy)/length)) if length else 0
+        return math.hypot(p[0]-a[0]-t*dx, p[1]-a[1]-t*dy)
+    index = max(range(1, len(points)-1), key=lambda i: distance(points[i]))
+    if distance(points[index]) <= tolerance:
+        return [a, b]
+    return simplify(points[:index+1], tolerance)[:-1] + simplify(points[index:], tolerance)
 
 
 def download(url):
@@ -60,7 +77,7 @@ def read_feed(archive, source):
             used.update(s[0] for s in stops)
             route = routes[t['route_id']]
             line = 'UP' if source == 'UP' else route['route_short_name']
-            pattern = [line, t['trip_headsign'].split(' - ', 1)[-1], stops, t.get('trip_short_name') or trip_id.split('-')[-1]]
+            pattern = [line, t['trip_headsign'].split(' - ', 1)[-1], stops, t.get('trip_short_name') or trip_id.split('-')[-1], source + ':' + t['shape_id'] if t.get('shape_id') else '']
             key = json.dumps(pattern)
             if key not in lookup:
                 lookup[key] = len(patterns)
@@ -83,22 +100,29 @@ def read_feed(archive, source):
                 active[row['date']].discard(row['service_id'])
         days = {date: sorted({i for service in service_ids for i in services[service]}) for date, service_ids in sorted(active.items())}
         days = {day: ids for day, ids in days.items() if ids}
-        stops = {stop_id(k): {'name': r['stop_name'], 'accessible': r.get('wheelchair_boarding') == '1'} for k, r in stop_rows.items() if stop_id(k) in used}
+        stops = {stop_id(k): {'name': r['stop_name'], 'accessible': r.get('wheelchair_boarding') == '1', **({'latitude': float(r['stop_lat']), 'longitude': float(r['stop_lon'])} if r.get('stop_lat') and r.get('stop_lon') else {})} for k, r in stop_rows.items() if stop_id(k) in used}
+        used_shapes = {t['shape_id'] for t in trips.values() if t.get('shape_id')}
+        shape_points = collections.defaultdict(list)
+        for row in rows('shapes.txt'):
+            if row['shape_id'] in used_shapes:
+                shape_points[row['shape_id']].append((int(row['shape_pt_sequence']), [round(float(row['shape_pt_lat']), 5), round(float(row['shape_pt_lon']), 5)]))
+        shapes = {source + ':' + key: simplify([p for _, p in sorted(points)]) for key, points in shape_points.items()}
         lines = {('UP' if source == 'UP' else r['route_short_name']): {'name': 'UP Express' if source == 'UP' else r['route_long_name'], 'color': '#' + (r.get('route_color') or '0075D2'), 'source': source} for r in routes.values()}
         if not patterns or not days or not stops or not used.issubset(stops):
             raise ValueError(f'{source}: invalid or empty train schedule')
-        return {'stops': stops, 'lines': lines, 'patterns': patterns, 'days': days}
+        return {'stops': stops, 'lines': lines, 'patterns': patterns, 'days': days, 'shapes': shapes}
 
 
 def combine(feeds, today=None):
     today = today or dt.datetime.now(dt.timezone.utc).strftime('%Y%m%d')
-    result = {'stops': {}, 'lines': {}, 'patterns': [], 'days': {}, 'sources': {}}
+    result = {'stops': {}, 'lines': {}, 'patterns': [], 'days': {}, 'sources': {}, 'shapes': {}}
     for source, feed in feeds.items():
         if max(feed['days']) < today:
             raise ValueError(f'{source}: downloaded schedule has expired; retaining previous data')
         offset = len(result['patterns'])
         result['patterns'].extend(feed['patterns'])
         result['lines'].update(feed['lines'])
+        result['shapes'].update(feed.get('shapes', {}))
         for key, stop in feed['stops'].items():
             if key in result['stops']:
                 # Only the explicit shared GO/UP interchange codes are merged.

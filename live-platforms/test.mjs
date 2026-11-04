@@ -53,7 +53,7 @@ vm.runInContext(`feed={stops:{UN:{name:'Union Station GO'}}};vehicleData={update
 assert.match(vm.runInContext(`vehicleLabel(['LW','Aldershot GO',[['UN',60,60]],'1639'],0,60,'2026-10-26')`,context),/At Union Station GO/);
 assert.equal(vm.runInContext(`vehicleLabel(['LE','Oshawa GO',[['UN',60,60]],'1639'],0,60,'2026-10-26')`,context),'');
 vm.runInContext(`vehicleData.vehicles[0].date='2026-10-25';`,context);
-assert.match(vm.runInContext(`vehicleLabel(['LW','Aldershot GO',[['UN',1500,1500]],'1639'],0,60,'2026-10-26')`,context),/View on map/);
+assert.match(vm.runInContext(`vehicleLabel(['LW','Aldershot GO',[['UN',1500,1500]],'1639'],0,60,'2026-10-26')`,context),/At Union Station GO/);
 console.log('Passed: frontend vehicle matching by line, trip, service date and midnight rollover.');
 
 // UP uses its separate feed, the same private key, and the schedule's canonical stops.
@@ -98,3 +98,11 @@ console.log('Passed: UP trip/stop mapping, both fixed upstream paths, shared sec
 vm.runInContext(`feed.stops['UP:PA']={name:'UP Express Pearson Airport'};vehicleData.vehicles=[{line:'UP',trip:'4341',date:'2026-10-26',latitude:43.68,longitude:-79.61,stop:'UP:PA',status:'STOPPED_AT',updatedAt:'${new Date().toISOString()}'}];`,context);
 assert.match(vm.runInContext(`vehicleLabel(['UP','Pearson Airport',[['UN',60,60]],'4341'],0,60,'2026-10-26')`,context),/At UP Express Pearson Airport/);
 console.log('Passed: UP live position renders on a matching scheduled departure.');
+
+assert.equal(vm.runInContext(`pairedPlatform('7','UN')`,context),'7 / 8');
+assert.equal(vm.runInContext(`pairedPlatform('8','UN')`,context),'7 / 8');
+assert.equal(vm.runInContext(`pairedPlatform('11','UN')`,context),'11 / 12');
+assert.equal(vm.runInContext(`pairedPlatform('7 / 8','UN')`,context),'7 / 8');
+assert.equal(vm.runInContext(`pairedPlatform('4','UN')`,context),'4');
+assert.equal(vm.runInContext(`pairedPlatform('7','OA')`,context),'7');
+console.log('Passed: Union paired platforms preserve explicit pairs, single platforms and other stations.');
