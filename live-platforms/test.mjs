@@ -116,3 +116,17 @@ vm.runInContext(`platforms.trips[0].line='UP';platforms.trips[0].actualPlatform=
 assert.match(vm.runInContext(`platformLabel(['UP','',[],'4341'],1427,'2026-10-26','UN')`,context),/<strong>2<\/strong>/);
 vm.runInContext(`platforms=null;`,context);
 assert.match(vm.runInContext(`platformLabel(['UP','',[],'4341'],1427,'2026-10-26','UN')`,context),/default/);
+const {normalizeUnion}=await import('./worker.mjs');
+const unionFixture={Metadata:fixture.Metadata,AllDepartures:{Trip:[{TripNumber:'1639',Service:'Lakeshore West',ServiceType:'T',Time:'2026-10-26 23:47:00',Platform:'7 & 8'},{TripNumber:'1',ServiceType:'B',Time:'2026-10-26 23:47:00',Platform:'5'}]}};
+assert.deepEqual(normalizeUnion(unionFixture,now).trips,[{trip:'1639',line:'LW',date:'2026-10-26',minute:1427,actualPlatform:'7 / 8',scheduledPlatform:''}]);
+assert.throws(()=>normalizeUnion(unionFixture,new Date(+now+180000)),/Stale/);
+assert.throws(()=>normalizeUnion({Metadata:fixture.Metadata},now),/Invalid/);
+const currentMetadata=()=>({ErrorCode:'200',TimeStamp:new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Toronto',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(new Date())});
+try{
+ const paths=[];
+ globalThis.fetch=async url=>{paths.push(new URL(url).pathname);if(paths.length===1)throw Error('Union feed unavailable');return Response.json({...fixture,Metadata:currentMetadata()});};
+ const fallback=await worker.fetch(request('?station=UN'),env,{waitUntil(){}});
+ assert.equal(fallback.status,200);
+ assert.deepEqual(paths,['/OpenDataAPI/api/V1/ServiceUpdate/UnionDepartures/All','/OpenDataAPI/api/V1/Stop/NextService/UN']);
+}finally{globalThis.fetch=originalFetch;}
+console.log('Passed: Union platform pairs, buses excluded, freshness and NextService fallback.');

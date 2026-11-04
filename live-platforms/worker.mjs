@@ -20,6 +20,11 @@ export function normalize(payload,station,now=new Date()){
   const d=departureParts(t.ScheduledDepartureTime);if(!d||!t.TripNumber)return [];
   return [{trip:String(t.TripNumber),line:String(t.LineCode||''),...d,actualPlatform:String(t.ActualPlatform||'').trim(),scheduledPlatform:String(t.ScheduledPlatform||'').trim()}];})};
 }
+export function normalizeUnion(payload,now=new Date()){
+ if(!Array.isArray(payload.AllDepartures?.Trip))throw Error('Invalid Union departures');
+ const lines={'Lakeshore West':'LW','Lakeshore East':'LE','Barrie':'BR','Kitchener':'KI','Milton':'MI','Richmond Hill':'RH','Stouffville':'ST','UP Express':'UP'};
+ return normalize({Metadata:payload.Metadata,NextService:{Lines:payload.AllDepartures.Trip.filter(t=>t.ServiceType==='T').map(t=>({StopCode:'UN',ServiceType:'T',TripNumber:t.TripNumber,LineCode:lines[t.Service]||'',ScheduledDepartureTime:t.Time,ActualPlatform:String(t.Platform||'').replace(/\s*&\s*/g,' / '),ScheduledPlatform:''}))}},'UN',now);
+}
 export function normalizeVehicles(payload,now=new Date(),source='GO'){
  const timestamp=Number(payload.header?.timestamp)*1000;
  if(!Number.isFinite(timestamp)||!fresh(new Date(timestamp).toISOString(),now))throw Error('Stale vehicle feed');
@@ -51,7 +56,7 @@ export default {async fetch(request,env,ctx){
  if([...url.searchParams.keys()].some(k=>!['station','mode'].includes(k)))return reply({error:'Unknown parameter'},400);
  if(!env.METROLINX_API_KEY)return reply({error:'Live data is not configured'},503);
  if(env.CLIENT_RATE_LIMITER){const result=await env.CLIENT_RATE_LIMITER.limit({key:request.headers.get('CF-Connecting-IP')||'unknown'});if(!result.success)return reply({error:'Too many requests'},429);}
- const cacheKey=new Request(url.origin+'/cache/'+mode+(mode==='platforms'?'/'+station:'/go-up-v1'));
+ const cacheKey=new Request(url.origin+'/cache/'+mode+(mode==='platforms'?'/union-v2/'+station:'/go-up-v1'));
  const cached=await caches.default.match(cacheKey);if(cached)return new Response(cached.body,{headers});
  try{
   const fetchFeed=async path=>{
@@ -68,6 +73,9 @@ export default {async fetch(request,env,ctx){
    const results=await Promise.allSettled(sources.map(async source=>normalizeVehicles(await fetchFeed((source==='UP'?'UP/':'')+'Gtfs/Feed/VehiclePosition'),new Date(),source)));
    if(results.every(result=>result.status==='rejected'))throw Error('Vehicle feeds unavailable');
    data={updatedAt:new Date().toISOString(),vehicles:results.flatMap(result=>result.status==='fulfilled'?result.value.vehicles:[]),sources:Object.fromEntries(sources.map((source,i)=>[source,{available:results[i].status==='fulfilled'}]))};
+  }else if(station==='UN'){
+   try{data=normalizeUnion(await fetchFeed('ServiceUpdate/UnionDepartures/All'));}
+   catch{data=normalize(await fetchFeed('Stop/NextService/'+station),station);}
   }else data=normalize(await fetchFeed('Stop/NextService/'+station),station);
   ctx.waitUntil(caches.default.put(cacheKey,new Response(JSON.stringify(data),{headers:{'Content-Type':'application/json','Cache-Control':'public,max-age=30'}})));
   return reply(data);
