@@ -26,7 +26,7 @@ assert.equal(vm.runInContext(`auroraIndicator(['BR','Allandale Waterfront GO'])`
 assert.equal(vm.runInContext(`auroraIndicator(['LW','Aurora GO'])`,context),'');
 
 // Successful Metrolinx replies use code 200, and buses must not become train markers.
-const {normalizeVehicles,default:worker}=await import('./worker.mjs');
+const {normalizeVehicles,normalizeTripUpdates,default:worker}=await import('./worker.mjs');
 assert.equal(normalize({...fixture,Metadata:{...fixture.Metadata,ErrorCode:'200'}},'UN',now).trips.length,1);
 const vehicle={trip:{trip_id:'20261026-LW-1639',route_id:'09261126-LW',start_date:'20261026'},position:{latitude:43.65,longitude:-79.38},timestamp:+now/1000,stop_id:'UN',current_status:'STOPPED_AT',vehicle:{license_plate:'private-unused-field'}};
 const positions={header:{timestamp:+now/1000},entity:[{vehicle},{vehicle:{...vehicle,trip:{...vehicle.trip,route_id:'09261126-41'}}},{vehicle:{...vehicle,timestamp:+now/1000-300}}]};
@@ -36,6 +36,12 @@ assert.equal(normalized.vehicles[0].trip,'1639');
 assert.equal(normalized.vehicles[0].line,'LW');
 assert.ok(!JSON.stringify(normalized).includes('license_plate'));
 assert.throws(()=>normalizeVehicles(positions,new Date(+now+180000)),/Stale/);
+const tripUpdate={trip:{trip_id:'20261026-LW-1639',route_id:'09261126-LW',start_date:'20261026'},stop_time_update:[{stop_id:'UN',departure:{delay:185}},{stop_id:'OA',arrival:{delay:120}}],timestamp:+now/1000,vehicle:{private_field:'unused'}};
+const updates={header:{timestamp:+now/1000},entity:[{trip_update:tripUpdate},{trip_update:{...tripUpdate,trip:{...tripUpdate.trip,route_id:'09261126-41'}}}]};
+const normalizedUpdates=normalizeTripUpdates(updates,now);
+assert.deepEqual(normalizedUpdates.delays,[{line:'LW',trip:'1639',date:'2026-10-26',stops:[{stop:'UN',delay:185},{stop:'OA',delay:120}],updatedAt:now.toISOString()}]);
+assert.ok(!JSON.stringify(normalizedUpdates).includes('private_field'));
+assert.throws(()=>normalizeTripUpdates(updates,new Date(+now+180000)),/Stale/);
 const key='test-private-value',env={METROLINX_API_KEY:key,ALLOWED_ORIGIN:'https://kilkenny1.github.io'};
 const request=(suffix='',origin=env.ALLOWED_ORIGIN)=>new Request('https://worker.example/'+suffix,{headers:{Origin:origin}});
 assert.equal((await worker.fetch(request('?mode=vehicles','https://other.example'),env,{})).status,403);
@@ -56,33 +62,47 @@ vm.runInContext(`vehicleData.vehicles[0].date='2026-10-25';`,context);
 assert.match(vm.runInContext(`vehicleLabel(['LW','Aldershot GO',[['UN',1500,1500]],'1639'],0,60,'2026-10-26')`,context),/At Union Station GO/);
 console.log('Passed: frontend vehicle matching by line, trip, service date and midnight rollover.');
 
+vm.runInContext(`vehicleData.delays=[{line:'LW',trip:'01639',date:'2026-10-26',stops:[{stop:'UN',delay:185}],updatedAt:'${new Date().toISOString()}'}];`,context);
+assert.match(vm.runInContext(`delayLabel(['LW','Aldershot GO',[['UN',60,60]],'1639'],0,60,'2026-10-26')`,context),/\+3 min/);
+vm.runInContext(`vehicleData.delays[0].stops[0].delay=25;`,context);
+assert.match(vm.runInContext(`delayLabel(['LW','Aldershot GO',[['UN',60,60]],'1639'],0,60,'2026-10-26')`,context),/On time/);
+vm.runInContext(`vehicleData.delays[0].stops[0].delay=-125;`,context);
+assert.match(vm.runInContext(`delayLabel(['LW','Aldershot GO',[['UN',60,60]],'1639'],0,60,'2026-10-26')`,context),/2 min early/);
+assert.equal(vm.runInContext(`delayLabel(['LW','Aldershot GO',[['OA',60,60]],'1639'],0,60,'2026-10-26')`,context),'');
+console.log('Passed: frontend delay display, on-time status, early status, and stop-specific matching.');
+
 // UP uses its separate feed, the same private key, and the schedule's canonical stops.
 const upVehicle={...vehicle,trip:{trip_id:'20261026-4341',route_id:'UP',start_date:'20261026'},stop_id:'PA'};
 const upPositions={header:{timestamp:+now/1000},entity:[{vehicle:upVehicle}]};
 const up=normalizeVehicles(upPositions,now,'UP').vehicles[0];
 assert.equal(up.line,'UP');assert.equal(up.trip,'4341');assert.equal(up.stop,'UP:PA');
 assert.equal(normalizeVehicles({...upPositions,entity:[{vehicle:{...upVehicle,stop_id:'UN'}}]},now,'UP').vehicles[0].stop,'UN');
+const upUpdates={header:{timestamp:+now/1000},entity:[{trip_update:{trip:{trip_id:'20261026-4341',route_id:'UP',start_date:'20261026'},stop_time_update:[{stop_id:'PA',departure:{delay:60}},{stop_id:'UN',departure:{delay:0}}],timestamp:+now/1000}}]};
+assert.deepEqual(normalizeTripUpdates(upUpdates,now,'UP').delays[0].stops,[{stop:'UP:PA',delay:60},{stop:'UN',delay:0}]);
 const current=()=>({header:{timestamp:Date.now()/1000},entity:[{vehicle:{...upVehicle,timestamp:Date.now()/1000}}]});
+const currentUpdates=()=>({header:{timestamp:Date.now()/1000},entity:[{trip_update:{...upUpdates.entity[0].trip_update,timestamp:Date.now()/1000}}]});
 let calls=[];
 globalThis.fetch=async url=>{
  calls.push(new URL(url));
- return Response.json(current());
+ return Response.json(new URL(url).pathname.endsWith('/TripUpdates')?currentUpdates():current());
 };
 try{
  const response=await worker.fetch(request('?mode=vehicles'),env,{waitUntil(){}});
  const combined=await response.json();
  assert.equal(response.status,200);
- assert.equal(calls.length,2);
- assert.deepEqual(calls.map(url=>url.pathname),['/OpenDataAPI/api/V1/Gtfs/Feed/VehiclePosition','/OpenDataAPI/api/V1/UP/Gtfs/Feed/VehiclePosition']);
+ assert.equal(calls.length,4);
+ assert.deepEqual(calls.map(url=>url.pathname),['/OpenDataAPI/api/V1/Gtfs/Feed/VehiclePosition','/OpenDataAPI/api/V1/Gtfs/Feed/TripUpdates','/OpenDataAPI/api/V1/UP/Gtfs/Feed/VehiclePosition','/OpenDataAPI/api/V1/UP/Gtfs/Feed/TripUpdates']);
  assert.ok(calls.every(url=>url.searchParams.get('key')===key));
  assert.equal(combined.sources.UP.available,true);
+ assert.equal(combined.sources.UP.delaysAvailable,true);
  assert.ok(combined.vehicles.some(v=>v.line==='UP'&&v.stop==='UP:PA'));
+ assert.ok(combined.delays.some(d=>d.line==='UP'&&d.stops.some(s=>s.stop==='UP:PA')));
  assert.ok(!JSON.stringify(combined).includes(key));
  for(const failedSource of ['GO','UP']){
   globalThis.fetch=async url=>{
    const source=new URL(url).pathname.includes('/UP/')?'UP':'GO';
    if(source===failedSource)throw Error('Unavailable '+key);
-   return Response.json(current());
+   return Response.json(new URL(url).pathname.endsWith('/TripUpdates')?currentUpdates():current());
   };
   const partial=await worker.fetch(request('?mode=vehicles'),env,{waitUntil(){}});
   const data=await partial.json();
@@ -93,7 +113,7 @@ try{
   assert.ok(!JSON.stringify(data).includes(key));
  }
 }finally{globalThis.fetch=originalFetch;}
-console.log('Passed: UP trip/stop mapping, both fixed upstream paths, shared secret, and independent feed failures.');
+console.log('Passed: GO and UP position/delay paths, stop mapping, shared secret, and independent feed failures.');
 
 vm.runInContext(`feed.stops['UP:PA']={name:'UP Express Pearson Airport'};vehicleData.vehicles=[{line:'UP',trip:'4341',date:'2026-10-26',latitude:43.68,longitude:-79.61,stop:'UP:PA',status:'STOPPED_AT',updatedAt:'${new Date().toISOString()}'}];`,context);
 assert.match(vm.runInContext(`vehicleLabel(['UP','Pearson Airport',[['UN',60,60]],'4341'],0,60,'2026-10-26')`,context),/At UP Express Pearson Airport/);

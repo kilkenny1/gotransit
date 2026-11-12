@@ -43,6 +43,27 @@ export function normalizeVehicles(payload,now=new Date(),source='GO'){
  });
  return {updatedAt:now.toISOString(),vehicles};
 }
+function canonicalStop(stop,source){stop=String(stop||'');return source==='UP'&&stop&&!['UN','BL','MD','WE'].includes(stop)&&!stop.startsWith('UP:')?'UP:'+stop:stop;}
+export function normalizeTripUpdates(payload,now=new Date(),source='GO'){
+ const headerTimestamp=Number(payload.header?.timestamp)*1000;
+ if(!Number.isFinite(headerTimestamp)||!fresh(new Date(headerTimestamp).toISOString(),now))throw Error('Stale trip update feed');
+ if(!Array.isArray(payload.entity))throw Error('Invalid trip update feed');
+ const delays=payload.entity.flatMap(entity=>{
+  if(entity.is_deleted)return [];
+  const update=entity.trip_update,trip=update?.trip;if(!update||!trip)return [];
+  const line=source==='UP'?'UP':String(trip.route_id||'').split('-').at(-1),tripNumber=String(trip.trip_id||'').split('-').at(-1),day=String(trip.start_date||'');
+  const updatedSeconds=Number(update.timestamp||payload.header.timestamp),updated=updatedSeconds*1000;
+  if(!LINES.has(line)||!/^[0-9]{8}$/.test(day)||!tripNumber||!Number.isFinite(updated)||!fresh(new Date(updated).toISOString(),now))return [];
+  const stops=(Array.isArray(update.stop_time_update)?update.stop_time_update:[]).flatMap(stopUpdate=>{
+   const stop=canonicalStop(stopUpdate.stop_id,source),raw=stopUpdate.departure?.delay??stopUpdate.arrival?.delay,delay=Number(raw);
+   if(!stop||!Number.isFinite(delay)||delay< -3600||delay>21600)return [];
+   return [{stop,delay:Math.round(delay)}];
+  });
+  if(!stops.length)return [];
+  return [{line,trip:tripNumber,date:`${day.slice(0,4)}-${day.slice(4,6)}-${day.slice(6,8)}`,stops,updatedAt:new Date(updated).toISOString()}];
+ });
+ return {updatedAt:now.toISOString(),delays};
+}
 export default {async fetch(request,env,ctx){
  const url=new URL(request.url),origin=request.headers.get('Origin'),allowed=env.ALLOWED_ORIGIN||'https://kilkenny1.github.io';
  const headers={'Content-Type':'application/json','Access-Control-Allow-Origin':allowed,'Vary':'Origin','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'};
@@ -56,7 +77,7 @@ export default {async fetch(request,env,ctx){
  if([...url.searchParams.keys()].some(k=>!['station','mode'].includes(k)))return reply({error:'Unknown parameter'},400);
  if(!env.METROLINX_API_KEY)return reply({error:'Live data is not configured'},503);
  if(env.CLIENT_RATE_LIMITER){const result=await env.CLIENT_RATE_LIMITER.limit({key:request.headers.get('CF-Connecting-IP')||'unknown'});if(!result.success)return reply({error:'Too many requests'},429);}
- const cacheKey=new Request(url.origin+'/cache/'+mode+(mode==='platforms'?'/union-v2/'+station:'/go-up-v1'));
+ const cacheKey=new Request(url.origin+'/cache/'+mode+(mode==='platforms'?'/union-v2/'+station:'/go-up-delays-v2'));
  const cached=await caches.default.match(cacheKey);if(cached)return new Response(cached.body,{headers});
  try{
   const fetchFeed=async path=>{
@@ -70,9 +91,18 @@ export default {async fetch(request,env,ctx){
   let data;
   if(mode==='vehicles'){
    const sources=['GO','UP'];
-   const results=await Promise.allSettled(sources.map(async source=>normalizeVehicles(await fetchFeed((source==='UP'?'UP/':'')+'Gtfs/Feed/VehiclePosition'),new Date(),source)));
-   if(results.every(result=>result.status==='rejected'))throw Error('Vehicle feeds unavailable');
-   data={updatedAt:new Date().toISOString(),vehicles:results.flatMap(result=>result.status==='fulfilled'?result.value.vehicles:[]),sources:Object.fromEntries(sources.map((source,i)=>[source,{available:results[i].status==='fulfilled'}]))};
+   const results=await Promise.allSettled(sources.flatMap(source=>[
+    (async()=>normalizeVehicles(await fetchFeed((source==='UP'?'UP/':'')+'Gtfs/Feed/VehiclePosition'),new Date(),source))(),
+    (async()=>normalizeTripUpdates(await fetchFeed((source==='UP'?'UP/':'')+'Gtfs/Feed/TripUpdates'),new Date(),source))()
+   ]));
+   if(results.every(result=>result.status==='rejected'))throw Error('Realtime feeds unavailable');
+   data={updatedAt:new Date().toISOString(),vehicles:[],delays:[],sources:{}};
+   sources.forEach((source,i)=>{
+    const positions=results[i*2],updates=results[i*2+1];
+    if(positions.status==='fulfilled')data.vehicles.push(...positions.value.vehicles);
+    if(updates.status==='fulfilled')data.delays.push(...updates.value.delays);
+    data.sources[source]={available:positions.status==='fulfilled',delaysAvailable:updates.status==='fulfilled'};
+   });
   }else if(station==='UN'){
    try{data=normalizeUnion(await fetchFeed('ServiceUpdate/UnionDepartures/All'));}
    catch{data=normalize(await fetchFeed('Stop/NextService/'+station),station);}

@@ -62,3 +62,4 @@ html{min-height:100%;background:var(--bg)}body{min-height:100vh;min-height:100dv
 .platform-not-supplied{display:block;font-size:12px;line-height:1.3;color:#aaa;overflow-wrap:normal}
 
 .departure-card{border-bottom:1px solid #282828;padding-bottom:12px}.departure-card:last-child{border:0}.departure-card>.train{border:0}.departure-card>.trip-map-button{margin:0 24px 0 176px;font-size:15px;padding:8px 14px;min-height:44px}@media(max-width:900px){.departure-card>.trip-map-button{margin-left:125px}}@media(max-width:600px){.departure-card>.trip-map-button{margin-left:93px;max-width:calc(100% - 110px)}}
+.departure-delay{display:block;margin-top:4px;font:600 12px/1.2 var(--font);letter-spacing:0}.departure-delay.is-late{color:#f0b35a}.departure-delay.is-on-time{color:#aaa}.departure-delay.is-early{color:#cfcfcf}@media(max-width:600px){.departure-delay{font-size:13px;margin-top:5px}}
